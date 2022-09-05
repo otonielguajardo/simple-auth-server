@@ -1,5 +1,7 @@
 const express = require('express');
 const cors = require('cors');
+const morgan = require("morgan");
+const helmet = require("helmet");
 const bodyParser = require('body-parser');
 const cookieParser = require('cookie-parser');
 const uuid = require('uuid');
@@ -11,6 +13,14 @@ const users = [
   { id: 2, email: "user2", password: "pass2" },
 ];
 const sessions = {};
+const cookieConfig = (expiresAt) => {
+  return {
+    secure: true,
+    httpOnly: false,
+    sameSite: 'None',
+    expires: expiresAt
+  };
+};
 
 class Session {
   constructor(email, expiresAt) {
@@ -54,11 +64,7 @@ const loginHandler = (req, res) => {
   sessions[sessionToken] = session;
 
   // set a cookie on response
-  res.cookie("session_token", sessionToken, {
-    secure: false,
-    httpOnly: false,
-    expires: expiresAt
-  });
+  res.cookie("session_token", sessionToken, cookieConfig(expiresAt));
   res.json(currentUser).end();
 }
 
@@ -115,11 +121,7 @@ const refreshHandler = (req, res) => {
   delete sessions[req.cookies['session_token']];
 
   // set new cookie on response
-  res.cookie("session_token", newSessionToken, {
-    secure: false,
-    httpOnly: false,
-    expires: expiresAt
-  });
+  res.cookie("session_token", newSessionToken, cookieConfig(expiresAt));
   res.end();
 }
 
@@ -128,15 +130,41 @@ const logoutHandler = (req, res) => {
   delete sessions[req.cookies['session_token']];
 
   // expire cookie and return empty value for session_token
-  res.cookie("session_token", "", { expires: new Date() });
+  res.cookie("session_token", "", cookieConfig(new Date()));
   res.end();
 }
 
 const app = express();
 
-app.use(cors());
+app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 app.use(cookieParser());
+
+app.use(function (req, res, next) {
+  res.header("Access-Control-Allow-Credentials", true);
+  res.header("Access-Control-Allow-Origin", req.headers.origin);
+  res.header(
+    "Access-Control-Allow-Methods",
+    "GET,PUT,POST,DELETE,UPDATE,OPTIONS"
+  );
+  res.header(
+    "Access-Control-Allow-Headers",
+    "X-Requested-With, X-HTTP-Method-Override, Content-Type, Accept"
+  );
+  next();
+});
+
+// app.use(
+//   cors({
+//     allowedHeaders: "*",
+//     allowMethods: "*",
+//     allowOrigin: "*",
+//     origin: "*",
+//   })
+// );
+app.use(morgan("dev"));
+app.use(helmet());
+app.use(express.json());
 
 app.post('/auth/login', loginHandler);
 app.post('/auth/logout', [authMiddleware], logoutHandler);
